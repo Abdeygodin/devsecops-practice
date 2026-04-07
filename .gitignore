@@ -1,0 +1,12 @@
+# Секреты и ключи
+.env
+*.pem
+*.key
+secrets/
+
+# IDE файлы
+.vscode/
+.idea/
+
+# Логи
+*.log
