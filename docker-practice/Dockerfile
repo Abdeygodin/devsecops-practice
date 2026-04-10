@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Устанавливаем зависимости
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt && pip uninstall pip wheel setuptools -y
 
 # Копируем код
 COPY app.py .
