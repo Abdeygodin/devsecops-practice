@@ -15,3 +15,4 @@ def get_user(username):
 
 # Уязвимость 3 — Hardcoded secret
 AWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+DB_PASSWORD="SuperSecret123!"
