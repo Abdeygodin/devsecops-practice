@@ -48,3 +48,19 @@ jobs:
           wget https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
           tar -xzf gitleaks_8.24.3_linux_x64.tar.gz
           ./gitleaks detect --source . -v
+
+  sbom-generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t devsecops-app:${{ github.sha }} ./docker-practice
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: devsecops-app:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-${{ github.sha }}.json
