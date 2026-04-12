@@ -24,7 +24,7 @@ jobs:
           exit-code: 1
           severity: CRITICAL,HIGH
 
-semgrep-scan:
+  semgrep-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -34,9 +34,8 @@ semgrep-scan:
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/python
-          generateSarif: false
 
-gitleaks-scan:
+  gitleaks-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
