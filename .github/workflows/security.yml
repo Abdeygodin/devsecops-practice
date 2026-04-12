@@ -24,7 +24,7 @@ jobs:
           exit-code: 1
           severity: CRITICAL,HIGH
 
-  semgrep-scan:
+semgrep-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
