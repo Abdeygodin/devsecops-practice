@@ -59,7 +59,7 @@ jobs:
           format: spdx-json
           output-file: sbom-${{ github.sha }}.json
 
-zap-scan:
+  zap-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
