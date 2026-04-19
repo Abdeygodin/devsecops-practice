@@ -1,0 +1,143 @@
+stages:
+  - security
+  - reporting
+
+trivy-scan:
+  stage: security
+  script:
+    - which trivy || (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin)
+    - docker build -t webapp:$CI_COMMIT_SHORT_SHA .
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL webapp:$CI_COMMIT_SHORT_SHA
+
+semgrep-scan:
+  stage: security
+  script:
+    - docker run --rm -v $(pwd):/src returntocorp/semgrep semgrep --config p/python /src || true
+
+gitleaks-scan:
+  stage: security
+  script:
+    - which gitleaks || (wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz && tar -xzf gitleaks_8.24.3_linux_x64.tar.gz && mv gitleaks /usr/local/bin/)
+    - gitleaks detect --source . -v
+
+sonar-scan:
+  stage: security
+  script:
+    - docker run --rm
+        -e SONAR_HOST_URL="${SONAR_HOST_URL}"
+        -e SONAR_TOKEN="${SONAR_TOKEN}"
+        -v "$(pwd):/usr/src"
+        sonarsource/sonar-scanner-cli:11
+        -Dsonar.projectKey=webapp-practice
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+sbom-generate:
+  stage: security
+  script:
+    - which syft || (curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin)
+    - docker build -t webapp:$CI_COMMIT_SHORT_SHA .
+    - syft webapp:$CI_COMMIT_SHORT_SHA -o spdx-json > sbom-$CI_COMMIT_SHORT_SHA.json
+    - echo "SBOM generated"
+  artifacts:
+    paths:
+      - sbom-*.json
+    expire_in: 30 days
+  allow_failure: true
+
+zap-scan:
+  stage: security
+  script:
+    - |
+      chmod 777 $(pwd)
+      docker run --rm \
+        --network host \
+        -v $(pwd):/zap/wrk/:rw \
+        -u root \
+        ghcr.io/zaproxy/zaproxy:stable \
+        zap-baseline.py \
+        -t http://192.168.0.146:5000 \
+        -r zap-report.html \
+        -J zap-report.json \
+        -x zap-report.xml || true
+  artifacts:
+    paths:
+      - zap-report.html
+      - zap-report.json
+    expire_in: 30 days
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+defectdojo-upload:
+  stage: reporting
+  when: always
+  script:
+    - |
+      which trivy || (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin)
+      which gitleaks || (wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz && tar -xzf gitleaks_8.24.3_linux_x64.tar.gz && mv gitleaks /usr/local/bin/)
+      which syft || (curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin)
+
+      docker build -t webapp:$CI_COMMIT_SHORT_SHA .
+
+      # Trivy
+      trivy image --format json -o trivy-report.json webapp:$CI_COMMIT_SHORT_SHA || true
+      curl -X POST \
+        -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+        -F "scan_type=Trivy Scan" \
+        -F "file=@trivy-report.json" \
+        -F "product_name=webapp-practice" \
+        -F "engagement_name=GitLab CI Pipeline" \
+        -F "auto_create_context=true" \
+        -F "verified=true" \
+        -F "active=true" \
+        -F "close_old_findings=true" \
+        "${DEFECTDOJO_URL}/api/v2/reimport-scan/"
+
+      # GitLeaks
+      gitleaks detect --source . -v --report-format json --report-path gitleaks-report.json || true
+      curl -X POST \
+        -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+        -F "scan_type=Gitleaks Scan" \
+        -F "file=@gitleaks-report.json" \
+        -F "product_name=webapp-practice" \
+        -F "engagement_name=GitLab CI Pipeline" \
+        -F "auto_create_context=true" \
+        -F "verified=true" \
+        -F "active=true" \
+        -F "close_old_findings=true" \
+        "${DEFECTDOJO_URL}/api/v2/reimport-scan/"
+
+      # SBOM
+      syft webapp:$CI_COMMIT_SHORT_SHA -o cyclonedx-json > sbom-report.json
+      curl -X POST \
+        -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+        -F "scan_type=CycloneDX Scan" \
+        -F "file=@sbom-report.json" \
+        -F "product_name=webapp-practice" \
+        -F "engagement_name=GitLab CI Pipeline" \
+        -F "auto_create_context=true" \
+        -F "verified=true" \
+        -F "active=true" \
+        -F "close_old_findings=true" \
+        "${DEFECTDOJO_URL}/api/v2/reimport-scan/"
+
+      # ZAP
+      if [ -f zap-report.xml ]; then
+        curl -X POST \
+          -H "Authorization: Token ${DEFECTDOJO_TOKEN}" \
+          -F "scan_type=ZAP Scan" \
+          -F "file=@zap-report.xml" \
+          -F "product_name=webapp-practice" \
+          -F "engagement_name=GitLab CI Pipeline" \
+          -F "auto_create_context=true" \
+          -F "verified=true" \
+          -F "active=true" \
+          -F "close_old_findings=true" \
+          "${DEFECTDOJO_URL}/api/v2/reimport-scan/" || true
+      fi
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'main'
+      when: always
