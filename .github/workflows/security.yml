@@ -58,3 +58,20 @@ jobs:
           image: webapp:${{ github.sha }}
           format: spdx-json
           output-file: sbom-${{ github.sha }}.json
+
+  zap-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t webapp:${{ github.sha }} ./webapp
+      - name: Start webapp
+        run: docker run -d -p 5000:5000 webapp:${{ github.sha }}
+      - name: Wait for webapp
+        run: sleep 5
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:5000'
+          allow_issue_writing: false
